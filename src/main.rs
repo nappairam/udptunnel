@@ -53,7 +53,6 @@ async fn tun_task(sock: Arc<UdpSocket>, tun: Arc<Tun>) -> Result<()> {
     let mut buf = [0; MAX_SIZE];
     loop {
         let len = tun.recv(&mut buf).await?;
-        println!("{:?} bytes received from Tun", len);
 
         // Reverse source and dest ip so that we can use same tunnel ip in both ends
         // No need to update checksum since we swapeed the values and not changed
@@ -71,10 +70,12 @@ async fn tun_task(sock: Arc<UdpSocket>, tun: Arc<Tun>) -> Result<()> {
 
 async fn udp_task(sock: Arc<UdpSocket>, tun: Arc<Tun>) -> Result<()> {
     let mut buf = [0; MAX_SIZE];
-    loop {
-        let (len, addr) = sock.recv_from(&mut buf).await?;
-        println!("{:?} bytes received from {:?}", len, addr);
 
+    let _ = sock.recv_from(&mut buf).await?;
+    println!("Tunnel connected");
+
+    loop {
+        let (len, _) = sock.recv_from(&mut buf).await?;
         let _ = tun.send(&buf[..len]).await?;
     }
 }
