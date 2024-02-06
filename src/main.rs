@@ -2,18 +2,14 @@ use anyhow::Result;
 use clap::Parser;
 use std::net::{SocketAddr, Ipv4Addr};
 use std::sync::Arc;
-use std::time::Duration;
-use tokio::time::sleep;
 use tokio::net::UdpSocket;
 use tokio_tun::Tun;
-use pnet::packet::{Packet, MutablePacket};
 use pnet::packet::ipv4::MutableIpv4Packet;
-use pnet::packet::udp::MutableUdpPacket;
+// use pnet::packet::udp::MutableUdpPacket;
 
 const MTU: usize = 1460;
 const PORT: u16 = 40890;
 const MAX_SIZE: usize = 1600;
-const FIXED_HDR_SIZE: usize = 20;
 
 #[derive(Parser, Debug)]
 struct Arguments {
@@ -93,9 +89,9 @@ async fn main() -> Result<()> {
     let sock = Arc::new(sock);
     let tun = Arc::new(tun);
 
-    tokio::spawn(udp_task(sock.clone(), tun.clone()));
-    tokio::spawn(tun_task(sock, tun));
+    let a = tokio::spawn(udp_task(sock.clone(), tun.clone()));
+    let b = tokio::spawn(tun_task(sock, tun));
 
-    sleep(Duration::from_secs(60)).await;
+    let _ = tokio::join!(a, b);
     Ok(())
 }
