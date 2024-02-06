@@ -6,6 +6,9 @@ use std::time::Duration;
 use tokio::time::sleep;
 use tokio::net::UdpSocket;
 use tokio_tun::Tun;
+use pnet::packet::{Packet, MutablePacket};
+use pnet::packet::ipv4::MutableIpv4Packet;
+use pnet::packet::udp::MutableUdpPacket;
 
 const MTU: usize = 1460;
 const PORT: u16 = 40890;
@@ -23,11 +26,11 @@ struct Arguments {
 }
 
 fn tun_local_addr() -> Ipv4Addr {
-    Ipv4Addr::new(172, 16, 16, 172)
+    Ipv4Addr::new(169, 254, 1, 1)
 }
 
 fn tun_peer_addr() -> Ipv4Addr {
-    Ipv4Addr::new(172, 16, 16, 16)
+    Ipv4Addr::new(169, 254, 1, 2)
 }
 
 async fn build_tun(name: String) -> Result<Tun> {
@@ -52,11 +55,21 @@ async fn build_udp(port: u16, peer: SocketAddr) -> Result<UdpSocket> {
 
 async fn tun_task(sock: Arc<UdpSocket>, tun: Arc<Tun>) -> Result<()> {
     let mut buf = [0; MAX_SIZE];
-
     loop {
-        let len = tun.recv(&mut buf[FIXED_HDR_SIZE..]).await?;
+        let len = tun.recv(&mut buf).await?;
         println!("{:?} bytes received from Tun", len);
-        let _ = sock.send(&buf[..len+FIXED_HDR_SIZE]).await?;
+
+        // Reverse source and dest ip so that we can use same tunnel ip in both ends
+        // No need to update checksum since we swapeed the values and not changed
+        if let Some(mut pkt) = MutableIpv4Packet::new(&mut buf[..len]) {
+            let source = pkt.get_source();
+            pkt.set_source(pkt.get_destination());
+            pkt.set_destination(source);
+        } else {
+            continue;
+        }
+
+        let _ = sock.send(&buf[..len]).await?;
     }
 }
 
@@ -65,9 +78,8 @@ async fn udp_task(sock: Arc<UdpSocket>, tun: Arc<Tun>) -> Result<()> {
     loop {
         let (len, addr) = sock.recv_from(&mut buf).await?;
         println!("{:?} bytes received from {:?}", len, addr);
-        let len = len - FIXED_HDR_SIZE;
 
-        let _ = tun.send(&buf[FIXED_HDR_SIZE..len]).await?;
+        let _ = tun.send(&buf[..len]).await?;
     }
 }
 
